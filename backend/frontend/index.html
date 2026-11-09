@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hospital Live Dashboard</title>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;600&display=swap" rel="stylesheet">
+
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  color: #fff;
+}
+
+header {
+  padding: 20px;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.container {
+  padding: 20px;
+}
+
+.cards {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.card {
+  background: rgba(255,255,255,0.08);
+  border-radius: 15px;
+  padding: 20px;
+  width: 220px;
+  text-align: center;
+  backdrop-filter: blur(12px);
+}
+
+.card h2 {
+  font-size: 34px;
+}
+
+.icu { border-bottom: 4px solid #ff4d4d; }
+.oxygen { border-bottom: 4px solid #00c6ff; }
+.general { border-bottom: 4px solid #00ff95; }
+
+table {
+  width: 100%;
+  margin-top: 30px;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px;
+  text-align: center;
+}
+
+th {
+  background: rgba(0,0,0,0.4);
+}
+
+.low { color: red; }
+.ok { color: #00ff95; }
+
+.updates {
+  margin-top: 30px;
+  background: rgba(255,255,255,0.05);
+  padding: 15px;
+  border-radius: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+</style>
+</head>
+
+<body>
+
+<header>🏥 Live Hospital Bed Monitoring</header>
+
+<div class="container">
+
+  <div class="cards">
+    <div class="card icu">
+      <h3>ICU Beds</h3>
+      <h2 id="icu">0</h2>
+    </div>
+
+    <div class="card oxygen">
+      <h3>Oxygen Beds</h3>
+      <h2 id="oxygen">0</h2>
+    </div>
+
+    <div class="card general">
+      <h3>General Beds</h3>
+      <h2 id="general">0</h2>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Hospital</th>
+        <th>Location</th>
+        <th>ICU</th>
+        <th>Oxygen</th>
+        <th>General</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <div class="updates">
+    <h3>🔴 Live Updates</h3>
+    <ul id="updates"></ul>
+  </div>
+
+</div>
+
+<script>
+console.log("✅ UI Loaded");
+
+// ✅ FIXED SOCKET (IMPORTANT)
+const socket = io("http://localhost:5000", {
+  transports: ["websocket"]
+});
+
+// Debug
+socket.on("connect", () => {
+  console.log("🔥 Connected:", socket.id);
+});
+
+socket.on("connect_error", (err) => {
+  console.log("❌ Socket Error:", err.message);
+});
+
+// ===== LOAD TOTALS =====
+async function loadTotals() {
+  const res = await fetch("http://localhost:5000/aggregate");
+  const data = await res.json();
+
+  document.getElementById("icu").innerText = data.icu;
+  document.getElementById("oxygen").innerText = data.oxygen;
+  document.getElementById("general").innerText = data.general;
+}
+
+// ===== LOAD TABLE =====
+async function loadTable() {
+  const res = await fetch("http://localhost:5000/getBeds");
+  const data = await res.json();
+
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
+
+  data.forEach(h => {
+    const row = `
+      <tr>
+        <td>${h.name}</td>
+        <td>${h.location}</td>
+        <td class="${h.icu_available < 3 ? 'low' : 'ok'}">${h.icu_available}</td>
+        <td class="${h.oxygen_available < 5 ? 'low' : 'ok'}">${h.oxygen_available}</td>
+        <td class="${h.general_available < 10 ? 'low' : 'ok'}">${h.general_available}</td>
+      </tr>
+    `;
+    tbody.innerHTML += row;
+  });
+}
+
+// ===== INITIAL LOAD =====
+loadTotals();
+loadTable();
+
+// ===== 🔥 REAL-TIME AUTO UPDATE =====
+socket.on("bedUpdate", (data) => {
+  console.log("🔥 Live Update:", data);
+
+  // Update UI instantly
+  loadTotals();
+  loadTable();
+
+  // Add to updates list
+  const li = document.createElement("li");
+  li.innerText = `${data.name} → ICU:${data.icu_available}, OXY:${data.oxygen_available}, GEN:${data.general_available}`;
+  document.getElementById("updates").prepend(li);
+});
+
+// ===== BACKUP AUTO REFRESH (EVERY 5s) =====
+setInterval(() => {
+  loadTotals();
+  loadTable();
+}, 5000);
+
+</script>
+
+</body>
+</html>
